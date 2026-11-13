@@ -19,6 +19,8 @@ import GalleryPage from './pages/GalleryPage.jsx';
 import DigitalEthics from './pages/DigitalEthics.jsx';
 import MarketingLab from './pages/MarketingLab.jsx';
 import Contact from './pages/Contact.jsx';
+import AdminLogin from './pages/AdminLogin.jsx';
+import AdminDashboard from './pages/AdminDashboard.jsx';
 
 function NotFound() {
   return (
@@ -54,6 +56,8 @@ export default function App() {
       <Navbar />
       <main id="konten" tabIndex={-1}>
         <Routes>
+          <Route path="/admin/login" element={<AdminLogin />} />
+          <Route path="/admin/dashboard" element={<AdminDashboard />} />
           <Route path="/" element={<Home />} />
           <Route path="/profil" element={<Profile />} />
           <Route path="/struktur-organisasi" element={<Organization />} />
