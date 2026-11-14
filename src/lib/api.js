@@ -1,4 +1,4 @@
-const API_URL = '/api';
+const API_URL = 'https://smeksa-backend.rommelsan102.workers.dev/api';
 
 export async function getNews() {
   const response = await fetch(`${API_URL}/berita`);
