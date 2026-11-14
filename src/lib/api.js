@@ -1,3 +1,32 @@
+
+function normalizeNews(item) {
+  if (!item) return item;
+
+  let body = Array.isArray(item.body) ? item.body : [];
+
+  if (!body.length && typeof item.body === 'string') {
+    try {
+      const parsed = JSON.parse(item.body);
+      if (Array.isArray(parsed)) body = parsed;
+    } catch {}
+  }
+
+  if (!body.length && item.isi) {
+    body = [item.isi];
+  }
+
+  const rawDate = item.date || item.tanggal || '';
+
+  return {
+    ...item,
+    title: item.title || item.judul || '',
+    date: rawDate.slice(0, 10),
+    excerpt: item.excerpt || item.isi || '',
+    body,
+    demo: Boolean(item.demo)
+  };
+}
+
 const API_URL = 'https://smeksa-backend.rommelsan102.workers.dev/api';
 
 export async function getNews() {
@@ -7,7 +36,7 @@ export async function getNews() {
     throw new Error('Gagal mengambil berita');
   }
 
-  return response.json();
+  return (await response.json()).map(normalizeNews);
 }
 
 export async function getNewsDetail(id) {
@@ -17,7 +46,7 @@ export async function getNewsDetail(id) {
     throw new Error('Berita tidak ditemukan');
   }
 
-  return response.json();
+  return normalizeNews(await response.json());
 }
 
 // Login admin
