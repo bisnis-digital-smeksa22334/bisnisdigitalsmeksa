@@ -24,7 +24,7 @@ export default function AdminDashboard() {
 
         if (!active) return;
 
-        if (!data?.loggedIn) {
+        if (!data?.authenticated) {
           navigate('/admin/login', { replace: true });
           return;
         }
