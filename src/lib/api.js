@@ -145,3 +145,57 @@ export async function deleteNews(id) {
 
   return data;
 }
+
+// Galeri publik
+export async function getGallery() {
+  const response = await fetch(`${API_URL}/galeri`);
+  if (!response.ok) throw new Error('Gagal mengambil galeri');
+  return response.json();
+}
+
+// Daftar galeri admin
+export async function getAdminGallery() {
+  const response = await fetch(`${API_URL}/admin/galeri`, {
+    credentials: 'include'
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Gagal mengambil galeri admin');
+  return data;
+}
+
+// Tambah foto galeri
+export async function createGalleryItem(item) {
+  const response = await fetch(`${API_URL}/galeri`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(item)
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Gagal menambahkan foto');
+  return data;
+}
+
+// Edit foto galeri
+export async function updateGalleryItem(id, item) {
+  const response = await fetch(`${API_URL}/galeri/${id}`, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(item)
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Gagal memperbarui foto');
+  return data;
+}
+
+// Hapus foto galeri
+export async function deleteGalleryItem(id) {
+  const response = await fetch(`${API_URL}/galeri/${id}`, {
+    method: 'DELETE',
+    credentials: 'include'
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Gagal menghapus foto');
+  return data;
+}

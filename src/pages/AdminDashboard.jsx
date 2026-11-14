@@ -1,19 +1,61 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getAdminSession, adminLogout, getNews, createNews, updateNews, deleteNews } from '../lib/api.js';
+import {
+  getAdminSession,
+  adminLogout,
+  getNews,
+  createNews,
+  updateNews,
+  deleteNews,
+  getAdminGallery,
+  createGalleryItem,
+  updateGalleryItem,
+  deleteGalleryItem
+} from '../lib/api.js';
+import { galleryCategories } from '../data/gallery.js';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
+
   const [admin, setAdmin] = useState(null);
   const [news, setNews] = useState([]);
+  const [galleryItems, setGalleryItems] = useState([]);
   const [checking, setChecking] = useState(true);
   const [loadingNews, setLoadingNews] = useState(false);
+  const [loadingGallery, setLoadingGallery] = useState(false);
   const [error, setError] = useState('');
+
   const [judul, setJudul] = useState('');
   const [isi, setIsi] = useState('');
   const [category, setCategory] = useState('Umum');
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
+
+  const [galleryId, setGalleryId] = useState(null);
+  const [galleryTitle, setGalleryTitle] = useState('');
+  const [galleryCategory, setGalleryCategory] = useState('Kegiatan Sekolah');
+  const [galleryUrl, setGalleryUrl] = useState('');
+  const [galleryDescription, setGalleryDescription] = useState('');
+  const [galleryPublished, setGalleryPublished] = useState(true);
+  const [savingGallery, setSavingGallery] = useState(false);
+
+  async function refreshNews() {
+    setLoadingNews(true);
+    try {
+      setNews(await getNews());
+    } finally {
+      setLoadingNews(false);
+    }
+  }
+
+  async function refreshGallery() {
+    setLoadingGallery(true);
+    try {
+      setGalleryItems(await getAdminGallery());
+    } finally {
+      setLoadingGallery(false);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -21,7 +63,6 @@ export default function AdminDashboard() {
     async function checkAdmin() {
       try {
         const data = await getAdminSession();
-
         if (!active) return;
 
         if (!data?.authenticated) {
@@ -30,33 +71,40 @@ export default function AdminDashboard() {
         }
 
         setAdmin(data);
-        setLoadingNews(true);
 
-        const newsData = await getNews();
+        const results = await Promise.allSettled([
+          getNews(),
+          getAdminGallery()
+        ]);
 
-        if (active) setNews(newsData);
+        if (!active) return;
+
+        if (results[0].status === 'fulfilled') {
+          setNews(results[0].value);
+        } else {
+          setError('Gagal memuat berita: ' + results[0].reason.message);
+        }
+
+        if (results[1].status === 'fulfilled') {
+          setGalleryItems(results[1].value);
+        } else {
+          setError('Gagal memuat galeri: ' + results[1].reason.message);
+        }
       } catch (err) {
-        if (active) {
-          setError(err.message || 'Gagal memuat dashboard.');
-        }
+        if (active) setError(err.message || 'Gagal memuat dashboard.');
       } finally {
-        if (active) {
-          setChecking(false);
-          setLoadingNews(false);
-        }
+        if (active) setChecking(false);
       }
     }
 
     checkAdmin();
-
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [navigate]);
 
   async function handleCreateNews(event) {
     event.preventDefault();
     if (editingId !== null) return handleUpdateNews(event);
+
     setError('');
     setSaving(true);
 
@@ -69,8 +117,7 @@ export default function AdminDashboard() {
         body: []
       });
 
-      const updatedNews = await getNews();
-      setNews(updatedNews);
+      await refreshNews();
       setJudul('');
       setIsi('');
       setCategory('Umum');
@@ -97,12 +144,8 @@ export default function AdminDashboard() {
 
     try {
       await updateNews(editingId, { judul, isi, category });
-      const updatedNews = await getNews();
-      setNews(updatedNews);
-      setEditingId(null);
-      setJudul('');
-      setIsi('');
-      setCategory('Umum');
+      await refreshNews();
+      cancelEdit();
     } catch (err) {
       setError(err.message || 'Gagal memperbarui berita.');
     } finally {
@@ -111,22 +154,13 @@ export default function AdminDashboard() {
   }
 
   async function handleDeleteNews(item) {
-    const confirmed = window.confirm(
-      `Yakin ingin menghapus berita "${item.title}"?`
-    );
-
-    if (!confirmed) return;
+    if (!window.confirm(`Yakin ingin menghapus berita "${item.title}"?`)) return;
 
     setError('');
-
     try {
       await deleteNews(item.id);
-      const updatedNews = await getNews();
-      setNews(updatedNews);
-
-      if (editingId === item.id) {
-        cancelEdit();
-      }
+      await refreshNews();
+      if (editingId === item.id) cancelEdit();
     } catch (err) {
       setError(err.message || 'Gagal menghapus berita.');
     }
@@ -140,6 +174,81 @@ export default function AdminDashboard() {
     setError('');
   }
 
+  function resetGalleryForm() {
+    setGalleryId(null);
+    setGalleryTitle('');
+    setGalleryCategory('Kegiatan Sekolah');
+    setGalleryUrl('');
+    setGalleryDescription('');
+    setGalleryPublished(true);
+  }
+
+  function startEditGallery(item) {
+    setGalleryId(item.id);
+    setGalleryTitle(item.title || '');
+    setGalleryCategory(item.category || 'Kegiatan Sekolah');
+    setGalleryUrl(item.image_url || '');
+    setGalleryDescription(item.description || '');
+    setGalleryPublished(Boolean(item.published));
+    document.getElementById('gallery-management')?.scrollIntoView({
+      behavior: 'smooth'
+    });
+  }
+
+  async function handleSaveGallery(event) {
+    event.preventDefault();
+    setError('');
+    setSavingGallery(true);
+
+    const item = {
+      title: galleryTitle,
+      category: galleryCategory,
+      image_url: galleryUrl,
+      description: galleryDescription,
+      published: galleryPublished
+    };
+
+    try {
+      if (galleryId !== null) {
+        await updateGalleryItem(galleryId, item);
+      } else {
+        await createGalleryItem(item);
+      }
+
+      await refreshGallery();
+      resetGalleryForm();
+    } catch (err) {
+      setError(err.message || 'Gagal menyimpan foto galeri.');
+    } finally {
+      setSavingGallery(false);
+    }
+  }
+
+  async function handleDeleteGallery(item) {
+    if (!window.confirm(`Hapus foto "${item.title}" dari galeri?`)) return;
+
+    setError('');
+    try {
+      await deleteGalleryItem(item.id);
+      await refreshGallery();
+      if (galleryId === item.id) resetGalleryForm();
+    } catch (err) {
+      setError(err.message || 'Gagal menghapus foto.');
+    }
+  }
+
+  async function toggleGalleryPublished(item) {
+    setError('');
+    try {
+      await updateGalleryItem(item.id, {
+        published: !Boolean(item.published)
+      });
+      await refreshGallery();
+    } catch (err) {
+      setError(err.message || 'Gagal mengubah status foto.');
+    }
+  }
+
   async function handleLogout() {
     try {
       await adminLogout();
@@ -150,12 +259,37 @@ export default function AdminDashboard() {
   }
 
   if (checking) {
-    return <section className="section"><div className="container"><p>Memeriksa sesi admin...</p></div></section>;
+    return (
+      <section className="section">
+        <div className="container"><p>Memeriksa sesi admin...</p></div>
+      </section>
+    );
   }
 
   if (!admin) {
-    return <section className="section"><div className="container"><p role="alert">{error || 'Sesi admin tidak tersedia.'}</p></div></section>;
+    return (
+      <section className="section">
+        <div className="container">
+          <p role="alert">{error || 'Sesi admin tidak tersedia.'}</p>
+        </div>
+      </section>
+    );
   }
+
+  const fieldStyle = {
+    display: 'block',
+    width: '100%',
+    padding: '12px',
+    marginTop: '6px'
+  };
+
+  const fieldWrapper = { marginBottom: '12px' };
+  const cardStyle = {
+    padding: '16px',
+    marginBottom: '12px',
+    border: '1px solid #ddd',
+    borderRadius: '8px'
+  };
 
   return (
     <section className="section">
@@ -166,13 +300,13 @@ export default function AdminDashboard() {
 
         {error && <p role="alert">{error}</p>}
 
-        <div style={{ marginTop: '24px' }}>
+        <section style={{ marginTop: '24px' }}>
           <h2>Pengelolaan Berita</h2>
 
           <form onSubmit={handleCreateNews} style={{ marginBottom: '28px' }}>
             <h3>{editingId !== null ? 'Edit Berita' : 'Tambah Berita Baru'}</h3>
 
-            <div style={{ marginBottom: '12px' }}>
+            <div style={fieldWrapper}>
               <label htmlFor="news-title">Judul berita</label>
               <input
                 id="news-title"
@@ -180,17 +314,17 @@ export default function AdminDashboard() {
                 onChange={(event) => setJudul(event.target.value)}
                 required
                 maxLength={150}
-                style={{ display: 'block', width: '100%', padding: '12px', marginTop: '6px' }}
+                style={fieldStyle}
               />
             </div>
 
-            <div style={{ marginBottom: '12px' }}>
+            <div style={fieldWrapper}>
               <label htmlFor="news-category">Kategori</label>
               <select
                 id="news-category"
                 value={category}
                 onChange={(event) => setCategory(event.target.value)}
-                style={{ display: 'block', width: '100%', padding: '12px', marginTop: '6px' }}
+                style={fieldStyle}
               >
                 <option value="Umum">Umum</option>
                 <option value="Kegiatan">Kegiatan</option>
@@ -199,7 +333,7 @@ export default function AdminDashboard() {
               </select>
             </div>
 
-            <div style={{ marginBottom: '12px' }}>
+            <div style={fieldWrapper}>
               <label htmlFor="news-content">Isi berita</label>
               <textarea
                 id="news-content"
@@ -208,13 +342,14 @@ export default function AdminDashboard() {
                 required
                 maxLength={10000}
                 rows={6}
-                style={{ display: 'block', width: '100%', padding: '12px', marginTop: '6px' }}
+                style={fieldStyle}
               />
             </div>
 
             <button type="submit" className="btn btn-primary" disabled={saving}>
               {saving ? 'Menyimpan...' : editingId !== null ? 'Simpan Perubahan' : 'Terbitkan Berita'}
             </button>
+
             {editingId !== null && (
               <button type="button" className="btn" onClick={cancelEdit} style={{ marginLeft: '10px' }}>
                 Batal
@@ -230,15 +365,7 @@ export default function AdminDashboard() {
             <div>
               <p>Total berita: {news.length}</p>
               {news.map((item) => (
-                <article
-                  key={item.id}
-                  style={{
-                    padding: '16px',
-                    marginBottom: '12px',
-                    border: '1px solid #ddd',
-                    borderRadius: '8px'
-                  }}
-                >
+                <article key={item.id} style={cardStyle}>
                   <h3>{item.title}</h3>
                   <button type="button" className="btn" onClick={() => startEdit(item)}>
                     Edit
@@ -257,13 +384,152 @@ export default function AdminDashboard() {
               ))}
             </div>
           )}
-        </div>
+        </section>
+
+        <hr style={{ margin: '36px 0' }} />
+
+        <section id="gallery-management">
+          <h2>Manajemen Galeri</h2>
+          <p>Kelola dokumentasi kegiatan, guru, fasilitas, karya, dan prestasi jurusan.</p>
+
+          <form onSubmit={handleSaveGallery} style={{ margin: '20px 0 28px' }}>
+            <h3>{galleryId !== null ? 'Edit Foto Galeri' : 'Tambah Foto Galeri'}</h3>
+
+            <div style={fieldWrapper}>
+              <label htmlFor="gallery-title">Judul foto</label>
+              <input
+                id="gallery-title"
+                value={galleryTitle}
+                onChange={(event) => setGalleryTitle(event.target.value)}
+                required
+                maxLength={150}
+                style={fieldStyle}
+              />
+            </div>
+
+            <div style={fieldWrapper}>
+              <label htmlFor="gallery-category">Kategori</label>
+              <select
+                id="gallery-category"
+                value={galleryCategory}
+                onChange={(event) => setGalleryCategory(event.target.value)}
+                style={fieldStyle}
+              >
+                {galleryCategories.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={fieldWrapper}>
+              <label htmlFor="gallery-url">Alamat foto (URL HTTPS atau path lokal)</label>
+              <input
+                id="gallery-url"
+                type="text"
+                value={galleryUrl}
+                onChange={(event) => setGalleryUrl(event.target.value)}
+                placeholder="/galeri/kegiatan-kelas.jpg"
+                required
+                style={fieldStyle}
+              />
+              <small>
+                Contoh path lokal: /galeri/kegiatan-kelas.jpg
+              </small>
+            </div>
+
+            <div style={fieldWrapper}>
+              <label htmlFor="gallery-description">Keterangan foto</label>
+              <textarea
+                id="gallery-description"
+                value={galleryDescription}
+                onChange={(event) => setGalleryDescription(event.target.value)}
+                rows={3}
+                maxLength={1000}
+                style={fieldStyle}
+              />
+            </div>
+
+            <label style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '16px' }}>
+              <input
+                type="checkbox"
+                checked={galleryPublished}
+                onChange={(event) => setGalleryPublished(event.target.checked)}
+              />
+              Terbitkan foto di galeri publik
+            </label>
+
+            <button type="submit" className="btn btn-primary" disabled={savingGallery}>
+              {savingGallery ? 'Menyimpan...' : galleryId !== null ? 'Simpan Perubahan Foto' : 'Tambah Foto'}
+            </button>
+
+            {galleryId !== null && (
+              <button type="button" className="btn" onClick={resetGalleryForm} style={{ marginLeft: '10px' }}>
+                Batal
+              </button>
+            )}
+          </form>
+
+          <h3>Daftar Foto</h3>
+          {loadingGallery ? (
+            <p>Memuat galeri...</p>
+          ) : galleryItems.length === 0 ? (
+            <p>Belum ada data galeri. Tambahkan foto pertama melalui formulir di atas.</p>
+          ) : (
+            <>
+              <p>Total foto: {galleryItems.length}</p>
+              {galleryItems.map((item) => (
+                <article key={item.id} style={cardStyle}>
+                  <h3>{item.title}</h3>
+                  {item.image_url && (
+                    <img
+                      src={item.image_url}
+                      alt={item.title}
+                      loading="lazy"
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        maxWidth: '320px',
+                        maxHeight: '200px',
+                        objectFit: 'cover',
+                        borderRadius: '8px',
+                        marginBottom: '12px'
+                      }}
+                    />
+                  )}
+                  <p>{item.category}</p>
+                  <p>{item.description || 'Tidak ada keterangan.'}</p>
+                  <p>Status: {item.published ? 'Diterbitkan' : 'Disembunyikan'}</p>
+
+                  <button type="button" className="btn" onClick={() => startEditGallery(item)}>
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => toggleGalleryPublished(item)}
+                    style={{ marginLeft: '8px' }}
+                  >
+                    {item.published ? 'Sembunyikan' : 'Terbitkan'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => handleDeleteGallery(item)}
+                    style={{ marginLeft: '8px' }}
+                  >
+                    Hapus
+                  </button>
+                </article>
+              ))}
+            </>
+          )}
+        </section>
 
         <button
           type="button"
           className="btn btn-primary"
           onClick={handleLogout}
-          style={{ marginTop: '24px' }}
+          style={{ marginTop: '32px' }}
         >
           Keluar
         </button>

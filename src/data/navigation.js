@@ -29,4 +29,5 @@ export const NAV = [
   },
   { label: 'Berita & Pengumuman', to: '/berita' },
   { label: 'Kontak', to: '/kontak' },
+  { label: 'Panel Admin', to: '/admin/login' },
 ];
